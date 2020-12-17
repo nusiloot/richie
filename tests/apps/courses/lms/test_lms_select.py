@@ -11,7 +11,7 @@ class LMSSelectTestCase(TestCase):
     """Test suite for the LMS select function."""
 
     @override_settings(
-        LMS_BACKENDS=[
+        RICHIE_LMS_BACKENDS=[
             {
                 "COURSE_REGEX": r"^.*/moocs/(?P<course_id>.*)",
                 "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",

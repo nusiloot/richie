@@ -7,6 +7,8 @@ import hmac
 from django.conf import settings
 from django.db.models import Q
 
+from cms import signals as cms_signals
+from cms.models import Page
 from rest_framework.decorators import api_view
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
@@ -100,10 +102,14 @@ def course_runs_sync(request, version):
 
     signature_is_valid = any(
         authorization_header
-        == hmac.new(
-            secret.encode("utf-8"), msg=msg.encode("utf-8"), digestmod=hashlib.sha256
-        ).hexdigest()
-        for secret in getattr(settings, "COURSE_RUN_SYNC_SECRETS", [])
+        == "SIG-HMAC-SHA256 {:s}".format(
+            hmac.new(
+                secret.encode("utf-8"),
+                msg=msg.encode("utf-8"),
+                digestmod=hashlib.sha256,
+            ).hexdigest()
+        )
+        for secret in getattr(settings, "RICHIE_COURSE_RUN_SYNC_SECRETS", [])
     )
 
     if not signature_is_valid:
@@ -149,8 +155,17 @@ def course_runs_sync(request, version):
 
             public_course = course_run.direct_course.public_extension
             if course_run.sync_mode == CourseRunSyncMode.SYNC_TO_PUBLIC:
-                if nb_updated == 1 and public_course:
-                    public_course.copy_relations(course_run.direct_course)
+                if public_course:
+                    # If the public course run did not exist yet it has to be created
+                    if nb_updated == 1:
+                        public_course.copy_relations(course_run.direct_course)
+
+                    # What we did has changed the public course page. We must reindex it
+                    cms_signals.post_publish.send(
+                        sender=Page,
+                        instance=course_run.direct_course.extended_object,
+                        language=None,
+                    )
             else:
                 course_run.refresh_from_db()
                 course_run.mark_course_dirty()
@@ -181,7 +196,7 @@ def course_runs_sync(request, version):
 
     # Create the related public course run if necessary
     if sync_mode == CourseRunSyncMode.SYNC_TO_PUBLIC:
-        # Don't mark the related course page dirty and directly publish
+        # Don't mark the related course page dirty and directly add
         # the course run to the corresponding public course page
         draft_course_run.save()
         if course.public_extension_id:
@@ -192,6 +207,11 @@ def course_runs_sync(request, version):
                 **serializer.validated_data,
             )
             public_course_run.save()
+
+            # What we did has changed the public course page. We must reindex it
+            cms_signals.post_publish.send(
+                sender=Page, instance=course.extended_object, language=None
+            )
     else:
         # Save the draft course run marking the course page dirty
         draft_course_run.save()

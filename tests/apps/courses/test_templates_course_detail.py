@@ -433,7 +433,7 @@ class RunsCourseCMSTestCase(CMSTestCase):
             end=self.now,
         )
 
-    @override_settings(LMS_BACKENDS=[])
+    @override_settings(RICHIE_LMS_BACKENDS=[])
     def test_templates_course_detail_runs_ongoing_open(self):
         """
         Priority 0: a course run open and on-going should always show up.
@@ -465,7 +465,7 @@ class RunsCourseCMSTestCase(CMSTestCase):
         )
 
     @override_settings(
-        LMS_BACKENDS=[
+        RICHIE_LMS_BACKENDS=[
             {
                 "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",
                 "JS_BACKEND": "openedx-hawthorn",
@@ -508,7 +508,7 @@ class RunsCourseCMSTestCase(CMSTestCase):
             r'class="richie-react richie-react--course-run-enrollment"',
         )
 
-    @override_settings(LMS_BACKENDS=[])
+    @override_settings(RICHIE_LMS_BACKENDS=[])
     def test_templates_course_detail_runs_future_open(self):
         """
         Priority 1: an upcoming open course run should show in a separate section.
@@ -540,7 +540,7 @@ class RunsCourseCMSTestCase(CMSTestCase):
         )
 
     @override_settings(
-        LMS_BACKENDS=[
+        RICHIE_LMS_BACKENDS=[
             {
                 "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",
                 "JS_BACKEND": "openedx-hawthorn",

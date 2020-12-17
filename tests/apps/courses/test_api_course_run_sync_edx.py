@@ -1,11 +1,16 @@
 """
 Tests for CourseRun API endpoints in the courses app.
 """
+import hashlib
+import hmac
 import json
+from unittest import mock
 
 from django.test import override_settings
 
 from cms.constants import PUBLISHER_STATE_DEFAULT, PUBLISHER_STATE_DIRTY
+from cms.models import Page
+from cms.signals import post_publish
 from cms.test_utils.testcases import CMSTestCase
 
 from richie.apps.courses.factories import CourseFactory, CourseRunFactory
@@ -13,11 +18,12 @@ from richie.apps.courses.lms.edx import SyncCourseRunSerializer
 from richie.apps.courses.models import Course, CourseRun, Title
 
 
-@override_settings(COURSE_RUN_SYNC_SECRETS=["shared secret"])
+@mock.patch.object(post_publish, "send", wraps=post_publish.send)
+@override_settings(RICHIE_COURSE_RUN_SYNC_SECRETS=["shared secret"])
 class SyncCourseRunApiTestCase(CMSTestCase):
     """Test calls to sync a course run via API endpoint."""
 
-    def test_api_course_run_sync_missing_signature(self):
+    def test_api_course_run_sync_missing_signature(self, mock_signal):
         """The course run synchronization API endpoint requires a signature."""
         data = {
             "resource_link": "http://example.edx:8073/courses/course-v1:edX+DemoX+01/course/",
@@ -27,6 +33,8 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             "enrollment_end": "2020-12-24T09:31:59.417972Z",
             "languages": ["en", "fr"],
         }
+
+        mock_signal.reset_mock()
         response = self.client.post(
             "/api/v1.0/course-runs-sync", data, content_type="application/json"
         )
@@ -35,8 +43,9 @@ class SyncCourseRunApiTestCase(CMSTestCase):
         self.assertEqual(json.loads(response.content), "Missing authentication.")
         self.assertEqual(CourseRun.objects.count(), 0)
         self.assertEqual(Course.objects.count(), 0)
+        self.assertFalse(mock_signal.called)
 
-    def test_api_course_run_sync_invalid_signature(self):
+    def test_api_course_run_sync_invalid_signature(self, mock_signal):
         """The course run synchronization API endpoint requires a valid signature."""
         data = {
             "resource_link": "http://example.edx:8073/courses/course-v1:edX+DemoX+01/course/",
@@ -46,6 +55,8 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             "enrollment_end": "2020-12-24T09:31:59.417972Z",
             "languages": ["en", "fr"],
         }
+
+        mock_signal.reset_mock()
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
@@ -57,8 +68,9 @@ class SyncCourseRunApiTestCase(CMSTestCase):
         self.assertEqual(json.loads(response.content), "Invalid authentication.")
         self.assertEqual(CourseRun.objects.count(), 0)
         self.assertEqual(Course.objects.count(), 0)
+        self.assertFalse(mock_signal.called)
 
-    def test_api_course_run_sync_missing_resource_link(self):
+    def test_api_course_run_sync_missing_resource_link(self, mock_signal):
         """
         If the data submitted is missing a resource link, it should return a 400 error.
         """
@@ -70,12 +82,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             "enrollment_end": "2020-12-24T09:31:59.417972Z",
             "languages": ["en", "fr"],
         }
+
+        mock_signal.reset_mock()
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "acee4804ff21eabe366ff6e04495591dfe32dffa7f1cd2d48c0f44beb9d5aa0d"
+                "SIG-HMAC-SHA256 acee4804ff21eabe366ff6e04495591dfe32dffa7f1cd2d48c0f44beb9d5aa0d"
             ),
         )
 
@@ -85,8 +99,9 @@ class SyncCourseRunApiTestCase(CMSTestCase):
         )
         self.assertEqual(CourseRun.objects.count(), 0)
         self.assertEqual(Course.objects.count(), 0)
+        self.assertFalse(mock_signal.called)
 
-    def test_api_course_run_sync_invalid_field(self):
+    def test_api_course_run_sync_invalid_field(self, mock_signal):
         """
         If the submitted data is invalid, the course run synchronization view should return
         a 400 error.
@@ -100,12 +115,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             "enrollment_end": "2020-12-24T09:31:59.417972Z",
             "languages": ["en", "fr"],
         }
+
+        mock_signal.reset_mock()
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "38af01f97c1b6d078662de52a4785df7c09a16b426659af56f722f68c2035f95"
+                "SIG-HMAC-SHA256 38af01f97c1b6d078662de52a4785df7c09a16b426659af56f722f68c2035f95"
             ),
         )
 
@@ -123,8 +140,9 @@ class SyncCourseRunApiTestCase(CMSTestCase):
         )
         self.assertEqual(CourseRun.objects.count(), 0)
         self.assertEqual(Course.objects.count(), 0)
+        self.assertFalse(mock_signal.called)
 
-    def test_api_course_run_sync_create_unknown_course(self):
+    def test_api_course_run_sync_create_unknown_course(self, mock_signal):
         """
         If the submitted data is not related to an existing course run and the related course
         can't be found, the course run synchronization view should return a 400 error.
@@ -137,12 +155,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             "enrollment_end": "2020-12-24T09:31:59.417972Z",
             "languages": ["en", "fr"],
         }
+
+        mock_signal.reset_mock()
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -152,15 +172,18 @@ class SyncCourseRunApiTestCase(CMSTestCase):
         )
         self.assertEqual(CourseRun.objects.count(), 0)
         self.assertEqual(Course.objects.count(), 0)
+        self.assertFalse(mock_signal.called)
 
     @override_settings(
         RICHIE_DEFAULT_COURSE_RUN_SYNC_MODE="sync_to_public", TIME_ZONE="utc"
     )
-    def test_api_course_run_sync_create_sync_to_public_draft_course(self):
+    def test_api_course_run_sync_create_sync_to_public_draft_course(self, mock_signal):
         """
         If the submitted data is not related to an existing course run, a new course run should
         be created. If the related course is draft, the synchronization is limited to the draft
-        course run and the course is not marked dirty.
+        course run and the course is not marked dirty (it will already be IRL...).
+
+        Demonstrate calculating the signature.
         """
         course = CourseFactory(code="DemoX", should_publish=False)
         Title.objects.update(publisher_state=PUBLISHER_STATE_DEFAULT)
@@ -176,14 +199,20 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
+        authorization = "SIG-HMAC-SHA256 {:s}".format(
+            hmac.new(
+                "shared secret".encode("utf-8"),
+                msg=json.dumps(data).encode("utf-8"),
+                digestmod=hashlib.sha256,
+            ).hexdigest()
+        )
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
             content_type="application/json",
-            HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
-            ),
+            HTTP_AUTHORIZATION=authorization,
         )
 
         self.assertEqual(response.status_code, 200)
@@ -199,11 +228,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        self.assertFalse(mock_signal.called)
 
     @override_settings(
         RICHIE_DEFAULT_COURSE_RUN_SYNC_MODE="sync_to_public", TIME_ZONE="utc"
     )
-    def test_api_course_run_sync_create_sync_to_public_published_course(self):
+    def test_api_course_run_sync_create_sync_to_public_published_course(
+        self, mock_signal
+    ):
         """
         If the submitted data is not related to an existing course run, a new course run should
         be created. If the related course has a public counterpart, the synchronization is
@@ -222,13 +254,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -250,11 +283,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.assert_called_once_with(
+            sender=Page, instance=course.extended_object, language=None
+        )
 
     @override_settings(
         RICHIE_DEFAULT_COURSE_RUN_SYNC_MODE="sync_to_draft", TIME_ZONE="utc"
     )
-    def test_api_course_run_sync_create_sync_to_draft(self):
+    def test_api_course_run_sync_create_sync_to_draft(self, mock_signal):
         """
         If the submitted data is not related to an existing course run, a new course run should
         be created. In "sync_to_draft" mode, the synchronization should be limited to the draft
@@ -273,13 +309,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -296,9 +333,10 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DIRTY,
         )
+        self.assertFalse(mock_signal.called)
 
     @override_settings(TIME_ZONE="utc")
-    def test_api_course_run_sync_create_partial_required(self):
+    def test_api_course_run_sync_create_partial_required(self, mock_signal):
         """
         If the submitted data is not related to an existing course run and some required fields
         are missing, it should raise a 400.
@@ -312,13 +350,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "1de9b46133a91eec3515d0df40f586b642cff16b79aa9d5fe4f7679a33767967"
+                "SIG-HMAC-SHA256 1de9b46133a91eec3515d0df40f586b642cff16b79aa9d5fe4f7679a33767967"
             ),
         )
 
@@ -331,9 +370,10 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        self.assertFalse(mock_signal.called)
 
     @override_settings(TIME_ZONE="utc")
-    def test_api_course_run_sync_create_partial_not_required(self):
+    def test_api_course_run_sync_create_partial_not_required(self, mock_signal):
         """
         If the submitted data is not related to an existing course run and some optional fields
         are missing, it should create the course run.
@@ -350,13 +390,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         response = self.client.post(
             "/api/v1.0/course-runs-sync",
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "313cefea7a14f26ed7dc249719bc5a86bce36b0c63a9d27b2e30e3a616e108d6"
+                "SIG-HMAC-SHA256 313cefea7a14f26ed7dc249719bc5a86bce36b0c63a9d27b2e30e3a616e108d6"
             ),
         )
 
@@ -370,12 +411,14 @@ class SyncCourseRunApiTestCase(CMSTestCase):
         data.update({"start": None, "end": None, "enrollment_start": None})
         self.assertEqual(draft_serializer.data, data)
 
+        # The page is not marked dirty because the course run is to be scheduled
         self.assertEqual(
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        self.assertFalse(mock_signal.called)
 
-    def test_api_course_run_sync_existing_published_manual(self):
+    def test_api_course_run_sync_existing_published_manual(self, mock_signal):
         """
         If a course run exists in "manual" sync mode (draft and public versions), it should not
         be updated and course runs should not be created.
@@ -392,6 +435,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         origin_data = SyncCourseRunSerializer(instance=course_run).data
         data = {
@@ -408,7 +452,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -430,8 +474,9 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        self.assertFalse(mock_signal.called)
 
-    def test_api_course_run_sync_existing_draft_manual(self):
+    def test_api_course_run_sync_existing_draft_manual(self, mock_signal):
         """
         If a course run exists in "manual" sync mode (only draft version), it should not
         be updated and a new course run should not be created.
@@ -447,6 +492,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         origin_data = SyncCourseRunSerializer(instance=course_run).data
         data = {
@@ -463,7 +509,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -480,9 +526,10 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        self.assertFalse(mock_signal.called)
 
     @override_settings(TIME_ZONE="utc")
-    def test_api_course_run_sync_existing_published_sync_to_public(self):
+    def test_api_course_run_sync_existing_published_sync_to_public(self, mock_signal):
         """
         If a course run exists in "sync_to_public" mode (draft and public versions),
         it should be updated, draft and public versions.
@@ -499,6 +546,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         data = {
             "resource_link": link,
@@ -514,7 +562,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -536,13 +584,16 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.assert_called_once_with(
+            sender=Page, instance=course.extended_object, language=None
+        )
 
     @override_settings(TIME_ZONE="utc")
-    def test_api_course_run_sync_existing_draft_sync_to_public(self):
+    def test_api_course_run_sync_existing_draft_sync_to_public(self, mock_signal):
         """
-        If a course run exists in "sync_to_public" mode (only draft version),
-        and the course does not exist in public version, the draft course run should
-        be updated.
+        If a course run exists in "sync_to_public" mode (only draft version), and the course
+        does not exist in public version, the draft course run should be updated and the
+        related course should not be marked dirty (it will already be IRL...).
         """
         link = "http://example.edx:8073/courses/course-v1:edX+DemoX+01/course/"
         course = CourseFactory(code="DemoX")
@@ -555,6 +606,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         data = {
             "resource_link": link,
@@ -570,7 +622,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -587,9 +639,12 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        self.assertFalse(mock_signal.called)
 
     @override_settings(TIME_ZONE="utc")
-    def test_api_course_run_sync_existing_draft_with_public_course_sync_to_public(self):
+    def test_api_course_run_sync_existing_draft_with_public_course_sync_to_public(
+        self, mock_signal
+    ):
         """
         If a course run exists in "sync_to_public" mode (only draft version),
         but the course exists in public version, it should be updated, and a new public
@@ -605,6 +660,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         data = {
             "resource_link": link,
@@ -620,7 +676,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -642,9 +698,12 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.assert_called_once_with(
+            sender=Page, instance=course.extended_object, language=None
+        )
 
     @override_settings(TIME_ZONE="utc")
-    def test_api_course_run_sync_existing_published_sync_to_draft(self):
+    def test_api_course_run_sync_existing_published_sync_to_draft(self, mock_signal):
         """
         If a course run exists in "sync_to_draft" mode (draft and public versions),
         only the draft version should be udpated and the related course page should
@@ -662,6 +721,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         origin_data = SyncCourseRunSerializer(instance=course_run).data
         data = {
@@ -678,7 +738,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -700,9 +760,10 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DIRTY,
         )
+        self.assertFalse(mock_signal.called)
 
     @override_settings(TIME_ZONE="utc")
-    def test_api_course_run_sync_existing_draft_sync_to_draft(self):
+    def test_api_course_run_sync_existing_draft_sync_to_draft(self, mock_signal):
         """
         If a course run exists in "sync_to_draft" mode (only draft version),
         the draft version should be udpated, the related course page should
@@ -718,6 +779,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         data = {
             "resource_link": link,
@@ -733,7 +795,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
+                "SIG-HMAC-SHA256 338f7c262254e8220fea54467526f8f1f4562ee3adf1e3a71abaf23a20b739e4"
             ),
         )
 
@@ -750,9 +812,10 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DIRTY,
         )
+        self.assertFalse(mock_signal.called)
 
     @override_settings(TIME_ZONE="utc")
-    def test_api_course_run_sync_existing_partial(self):
+    def test_api_course_run_sync_existing_partial(self, mock_signal):
         """
         If a course run exists, it can be partially updated and the other fields should not
         be altered.
@@ -768,6 +831,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DEFAULT,
         )
+        mock_signal.reset_mock()
 
         origin_data = SyncCourseRunSerializer(instance=course_run).data
         data = {"resource_link": link, "end": "2021-03-14T09:31:59.417895Z"}
@@ -777,7 +841,7 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             data,
             content_type="application/json",
             HTTP_AUTHORIZATION=(
-                "1de9b46133a91eec3515d0df40f586b642cff16b79aa9d5fe4f7679a33767967"
+                "SIG-HMAC-SHA256 1de9b46133a91eec3515d0df40f586b642cff16b79aa9d5fe4f7679a33767967"
             ),
         )
         self.assertEqual(response.status_code, 200)
@@ -798,3 +862,4 @@ class SyncCourseRunApiTestCase(CMSTestCase):
             course.extended_object.title_set.first().publisher_state,
             PUBLISHER_STATE_DIRTY,
         )
+        self.assertFalse(mock_signal.called)

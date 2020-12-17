@@ -264,7 +264,7 @@ class Base(StyleguideMixin, DRFMixin, RichieCoursesConfigurationMixin, Configura
     }
 
     # LMS
-    LMS_BACKENDS = [
+    RICHIE_LMS_BACKENDS = [
         {
             # We configure default values that work with the test configuration of
             # github.com/openfun/openedx-docker.
@@ -280,6 +280,7 @@ class Base(StyleguideMixin, DRFMixin, RichieCoursesConfigurationMixin, Configura
                 environ_name="EDX_COURSE_REGEX",
                 environ_prefix=None,
             ),
+            "DEFAULT_COURSE_RUN_SYNC_MODE": "sync_to_public",
             # React frontend
             "JS_BACKEND": values.Value(
                 "base", environ_name="EDX_JS_BACKEND", environ_prefix=None
@@ -294,8 +295,15 @@ class Base(StyleguideMixin, DRFMixin, RichieCoursesConfigurationMixin, Configura
             ),
         }
     ]
-    DEFAULT_COURSE_RUN_SYNC_MODE = values.Value("sync_to_public")
-    COURSE_RUN_SYNC_SECRETS = values.Value([])
+    RICHIE_COURSE_RUN_SYNC_SECRETS = values.ListValue([])
+
+    # Elasticsearch
+    RICHIE_ES_HOST = values.Value(
+        "elasticsearch", environ_name="RICHIE_ES_HOST", environ_prefix=None
+    )
+    RICHIE_ES_INDICES_PREFIX = values.Value(
+        default="richie", environ_name="RICHIE_ES_INDICES_PREFIX", environ_prefix=None
+    )
 
     # Internationalization
     TIME_ZONE = "Europe/Paris"
@@ -480,14 +488,6 @@ class Base(StyleguideMixin, DRFMixin, RichieCoursesConfigurationMixin, Configura
         },
     }
 
-    # Elasticsearch
-    RICHIE_ES_HOST = values.Value(
-        "elasticsearch", environ_name="RICHIE_ES_HOST", environ_prefix=None
-    )
-    RICHIE_ES_INDICES_PREFIX = values.Value(
-        default="richie", environ_name="RICHIE_ES_INDICES_PREFIX", environ_prefix=None
-    )
-
     # Cache
     CACHES = {
         "default": {
@@ -574,6 +574,17 @@ class Test(Base):
             "OPTIONS": {"CLIENT_CLASS": "richie.apps.core.cache.SentinelClient"},
         }
     }
+
+    RICHIE_LMS_BACKENDS = [
+        {
+            "BASE_URL": "http://localhost:8073",
+            "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",
+            "COURSE_REGEX": r"^.*/courses/(?P<course_id>.*)/course/?$",
+            "JS_BACKEND": "base",
+            "JS_COURSE_REGEX": r"^.*/courses/(?<course_id>.*)/course/?$",
+            "JS_SELECTOR_REGEX": r".*",
+        }
+    ]
 
 
 class ContinuousIntegration(Test):

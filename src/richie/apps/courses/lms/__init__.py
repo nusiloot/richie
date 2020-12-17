@@ -24,7 +24,7 @@ class LMSHandler:
         if url is None:
             return None
 
-        for lms_configuration in settings.LMS_BACKENDS:
+        for lms_configuration in settings.RICHIE_LMS_BACKENDS:
             if re.match(lms_configuration.get("COURSE_REGEX", r".*"), url):
                 return import_string(lms_configuration["BACKEND"])(lms_configuration)
 
