@@ -19,7 +19,7 @@ based on a regex match on the URL of the course.
 ```python
 LMS_BACKENDS=[
     {
-        "BACKEND": "richie.apps.courses.lms.edx.TokenEdXLMSBackend",
+        "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",
         "JS_BACKEND": "openedx-hawthorn",
         "SELECTOR_REGEX": r".*lms-example2.org.*",
         "JS_SELECTOR_REGEX": r".*lms-example2.org.*",

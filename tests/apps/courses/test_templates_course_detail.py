@@ -467,9 +467,9 @@ class RunsCourseCMSTestCase(CMSTestCase):
     @override_settings(
         LMS_BACKENDS=[
             {
-                "BACKEND": "richie.apps.courses.lms.edx.TokenEdXLMSBackend",
+                "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",
                 "JS_BACKEND": "openedx-hawthorn",
-                "SELECTOR_REGEX": r".*",
+                "COURSE_REGEX": r".*",
                 "JS_COURSE_REGEX": r"^.*/courses/(?<course_id>.*)/course/?$",
                 "JS_SELECTOR_REGEX": r".*",
                 "BASE_URL": "http://edx:8073",
@@ -542,9 +542,9 @@ class RunsCourseCMSTestCase(CMSTestCase):
     @override_settings(
         LMS_BACKENDS=[
             {
-                "BACKEND": "richie.apps.courses.lms.edx.TokenEdXLMSBackend",
+                "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",
                 "JS_BACKEND": "openedx-hawthorn",
-                "SELECTOR_REGEX": r".*",
+                "COURSE_REGEX": r".*",
                 "JS_COURSE_REGEX": r"^.*/courses/(?<course_id>.*)/course/?$",
                 "JS_SELECTOR_REGEX": r".*",
                 "BASE_URL": "http://edx:8073",

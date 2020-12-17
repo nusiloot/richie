@@ -17,9 +17,8 @@ class HasConnectedLMSFilterTestCase(CMSTestCase):
     @override_settings(
         LMS_BACKENDS=[
             {
-                "BACKEND": "richie.apps.courses.lms.edx.TokenEdXLMSBackend",
+                "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",
                 "BASE_URL": "http://example.edx:8073",
-                "API_TOKEN": "fakesecret",
             }
         ]
     )
@@ -43,10 +42,9 @@ class HasConnectedLMSFilterTestCase(CMSTestCase):
     @override_settings(
         LMS_BACKENDS=[
             {
-                "BACKEND": "richie.apps.courses.lms.edx.TokenEdXLMSBackend",
+                "BACKEND": "richie.apps.courses.lms.edx.EdXLMSBackend",
                 "BASE_URL": "http://example.edx:8073",
                 "COURSE_REGEX": r"^.*/courses/(?P<course_id>.*)/course",
-                "API_TOKEN": "fakesecret",
             }
         ]
     )
